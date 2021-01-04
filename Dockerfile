@@ -15,7 +15,7 @@ RUN GIT_COMMIT=$(git rev-list -1 HEAD --) && \
     CGO_ENABLED=0 \
     GOOS=linux \
     GOARCH=amd64 \
-        go build -ldflags="-X main.GitCommit=${GIT_COMMIT} -w -s" -mod vendor -o /app .
+        go build -ldflags="-X main.GitCommit=${GIT_COMMIT} -w -s" -mod vendor -o /app ./
 
 RUN upx -q /app && \
     upx -t /app
