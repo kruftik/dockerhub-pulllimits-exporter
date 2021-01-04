@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -13,23 +14,33 @@ var (
 )
 
 type TokenInfoT struct {
-	m sync.RWMutex
+	m         sync.RWMutex
 	TokenInfo DockerHubJWTToken
 }
 
 type DockerHubJWTToken struct {
-	Token string `json:"token"`
+	Token     string        `json:"token"`
 	ExpiresIn time.Duration `json:"expires_in"`
-	IssuedAt time.Time `json:"issued_at"`
+	IssuedAt  time.Time     `json:"issued_at"`
 
 	ExpiresAt time.Time
 }
 
+type JWTTokenGetterFn func(string) (string, error)
 
 func (t *TokenInfoT) refresh(image string) error {
 	sURL := fmt.Sprintf("https://auth.docker.io/token?service=registry.docker.io&scope=repository:%s:pull", image)
 
-	resp, err := hc.Get(sURL)
+	req, err := http.NewRequest("GET", sURL, nil)
+	if err != nil {
+		return fmt.Errorf("cannot init request for JWT token: %w", err)
+	}
+
+	if Opts.DockerHubUsername != "" && Opts.DockerHubPassword != "" {
+		req.SetBasicAuth(Opts.DockerHubUsername, Opts.DockerHubPassword)
+	}
+
+	resp, err := hc.Do(req)
 	if err != nil {
 		return fmt.Errorf("cannot obtain JWT token: %w", err)
 	}
@@ -41,7 +52,7 @@ func (t *TokenInfoT) refresh(image string) error {
 	defer func() {
 		err := resp.Body.Close()
 		if err != nil {
-			log.Printf("cannot clous resp.Body: %w", err)
+			log.Printf("cannot clous resp.Body: %s", err)
 		}
 	}()
 
@@ -89,7 +100,7 @@ func (t *TokenInfoT) Get(image string) (string, error) {
 			return "", fmt.Errorf("cannot refresh token: %w", err)
 		}
 
-		log.Printf("New token retrieved, expiration in %d seconds", t.TokenInfo.ExpiresIn / time.Second)
+		log.Printf("New token retrieved, expiration in %d seconds", t.TokenInfo.ExpiresIn/time.Second)
 
 		t.m.RLock()
 	}
@@ -102,4 +113,3 @@ func (t *TokenInfoT) Get(image string) (string, error) {
 
 	return token, nil
 }
-

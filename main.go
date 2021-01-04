@@ -1,59 +1,49 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
-	"runtime"
+	"os"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/jessevdk/go-flags"
+
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var (
+	Opts = struct {
+		Port int `long:"port" env:"DOCKERHUB_EXPORTER_PORT" required:"false" default:"8881"`
+
+		DockerHubUsername string `long:"dockerhub-username" env:"DOCKERHUB_USERNAME" required:"false"`
+		DockerHubPassword string `long:"dockerhub-password" env:"DOCKERHUB_PASSWORD" required:"false"`
+	}{}
+
 	hc = http.Client{}
+
+	retriever = NewDockerHubRetriever(checkImageLabel, checkImageTag, tokenInfo.Get)
 )
 
 func main() {
-	retriever := NewDockerHubRetriever(checkImageLabel, checkImageTag, tokenInfo.Get)
+	_, err := flags.Parse(&Opts)
+	if err != nil {
+		fmt.Println("cannot parse flags: ", err)
+		os.Exit(1)
+	}
 
-	remainingPullsMetric := promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "dockerhub_limit_remaining_requests_total",
-		Help: "Docker Hub Rate Limit Remaining Requests",
-	})
+	if Opts.DockerHubUsername != "" && Opts.DockerHubPassword != "" {
+		log.Printf("Using provided '%s' credentials", Opts.DockerHubUsername)
+	} else {
+		log.Println("Using anonymous requests")
+	}
 
+	reg, err := RegisterCollectors()
+	if err != nil {
+		log.Panicf("cannot register collectors: %s", err.Error())
+	}
 
-	prometheus.MustRegister(prometheus.NewGaugeFunc(
-		prometheus.GaugeOpts{
-			Name: "dockerhub_limit_max_requests_total",
-			Help: "Docker Hub Rate Limit Maximum Requests",
-		},
-		func() float64 {
-			limits, err := retriever.GetLimits()
-			if err != nil {
-				log.Printf("cannot retrieve limits: %s", err.Error())
-				return 0
-			}
-
-			remainingPullsMetric.Set(float64(limits.Remaining.Limit))
-
-			return float64(limits.Total.Limit)
-		},
-	))
-
-	prometheus.MustRegister(prometheus.NewGaugeFunc(
-		prometheus.GaugeOpts{
-			Subsystem: "runtime",
-			Name:      "goroutines_count",
-			Help:      "Number of goroutines that currently exist.",
-		},
-		func() float64 {
-			return float64(runtime.NumGoroutine())
-		},
-	))
-
-	http.Handle("/metrics", promhttp.Handler())
-	if err := http.ListenAndServe(":8881", nil); err != nil {
+	http.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	if err := http.ListenAndServe(fmt.Sprintf(":%d", Opts.Port), nil); err != nil {
 		log.Panicf("cannot start http server: %s", err.Error())
 	}
 }

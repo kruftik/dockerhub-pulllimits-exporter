@@ -10,25 +10,25 @@ import (
 
 var (
 	checkImageLabel = "ratelimitpreview/test"
-	checkImageTag = "latest"
+	checkImageTag   = "latest"
 )
 
 type DockerHubLimit struct {
-	Limit int
+	Limit           int
 	RefreshDuration time.Duration
 }
 
 type DockerHubLimits struct {
-	Total DockerHubLimit
+	Total     DockerHubLimit
 	Remaining DockerHubLimit
 }
 
 type DockerHubRetriever struct {
 	m sync.Mutex
 
-	image struct{
+	image struct {
 		Label string
-		Tag string
+		Tag   string
 	}
 
 	tokenGetterFn func(string) (string, error)
@@ -57,7 +57,7 @@ func (l *DockerHubRetriever) getLimits(token string) (DockerHubLimits, error) {
 
 	limitSrc := resp.Header.Get("RateLimit-Limit")
 	if limitSrc == "" {
-		log.Panicln("cannot obtain current limit info")
+		return DockerHubLimits{}, fmt.Errorf("cannot obtain total limit info")
 	}
 
 	limits := DockerHubLimits{}
@@ -71,7 +71,7 @@ func (l *DockerHubRetriever) getLimits(token string) (DockerHubLimits, error) {
 
 	limitSrc = resp.Header.Get("RateLimit-Remaining")
 	if limitSrc == "" {
-		log.Panicln("cannot obtain remaining limit info")
+		return DockerHubLimits{}, fmt.Errorf("cannot obtain remaining limit info")
 	}
 
 	limit, err = ParseLimit(limitSrc)
@@ -81,8 +81,7 @@ func (l *DockerHubRetriever) getLimits(token string) (DockerHubLimits, error) {
 
 	limits.Remaining = limit
 
-	log.Printf("DockerHub current limits: total - %d, window %d hours, remaining - %d, window %d hours", limits.Total.Limit, limits.Total.RefreshDuration / time.Hour, limits.Remaining.Limit, limits.Remaining.RefreshDuration / time.Hour)
-
+	log.Printf("limit - %d pulls / %d second(s), %d remained", limits.Total.Limit, limits.Total.RefreshDuration/time.Second, limits.Remaining.Limit)
 
 	return limits, nil
 }
@@ -101,7 +100,7 @@ func (l *DockerHubRetriever) GetLimits() (DockerHubLimits, error) {
 	return l.getLimits(token)
 }
 
-func NewDockerHubRetriever(imageLabel, imageTag string, tokenGetterFn func(string) (string, error)) DockerHubRetriever {
+func NewDockerHubRetriever(imageLabel, imageTag string, tokenGetterFn JWTTokenGetterFn) DockerHubRetriever {
 	return DockerHubRetriever{
 		image: struct {
 			Label string
@@ -110,4 +109,3 @@ func NewDockerHubRetriever(imageLabel, imageTag string, tokenGetterFn func(strin
 		tokenGetterFn: tokenGetterFn,
 	}
 }
-
