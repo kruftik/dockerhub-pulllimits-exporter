@@ -1,0 +1,20 @@
+{{- if .Values.metrics.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ template "..fullname" . }}
+  {{- if .Values.metrics.prometheusRule.namespace }}
+  namespace: {{ .Values.metrics.prometheusRule.namespace }}
+  {{- end }}
+  labels:
+  {{- include "..labels" . | nindent 4 }}
+  {{- if .Values.metrics.prometheusRule.additionalLabels }}
+  {{ toYaml .Values.metrics.prometheusRule.additionalLabels | indent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.metrics.prometheusRule.rules }}
+  groups:
+    - name: {{ template "..name" $ }}
+      rules: {{- toYaml . | nindent 6 }}
+  {{- end }}
+  {{- end }}
