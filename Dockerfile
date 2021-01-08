@@ -10,11 +10,10 @@ RUN apk add --no-cache \
 
 RUN pwd ; ls -la .
 
-RUN GIT_COMMIT=$(git rev-list -1 HEAD --) && \
-    CGO_ENABLED=0 \
+RUN CGO_ENABLED=0 \
     GOOS=linux \
     GOARCH=amd64 \
-        go build -ldflags="-X main.GitCommit=${GIT_COMMIT} -w -s" -mod vendor -o /app ./cmd/...
+        go build -ldflags="-w -s" -mod vendor -o /app ./cmd/...
 
 RUN upx -q /app && \
     upx -t /app
