@@ -8,6 +8,8 @@ RUN apk add --no-cache \
         ca-certificates \
         upx
 
+RUN pwd ; ls -la .
+
 RUN GIT_COMMIT=$(git rev-list -1 HEAD --) && \
     CGO_ENABLED=0 \
     GOOS=linux \
