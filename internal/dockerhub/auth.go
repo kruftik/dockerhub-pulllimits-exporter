@@ -1,34 +1,20 @@
-package main
+package dockerhub
 
 import (
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"sync"
 	"time"
 )
 
-var (
-	tokenInfo = TokenInfoT{}
-)
-
-type TokenInfoT struct {
-	m         sync.RWMutex
-	TokenInfo DockerHubJWTToken
+func (t *authProviderT) setAuth(req *http.Request) {
+	if t.Credentials.Login != "" && t.Credentials.PasswordToken != "" {
+		req.SetBasicAuth(t.Credentials.Login, t.Credentials.PasswordToken)
+	}
 }
 
-type DockerHubJWTToken struct {
-	Token     string        `json:"token"`
-	ExpiresIn time.Duration `json:"expires_in"`
-	IssuedAt  time.Time     `json:"issued_at"`
-
-	ExpiresAt time.Time
-}
-
-type JWTTokenGetterFn func(string) (string, error)
-
-func (t *TokenInfoT) refresh(image string) error {
+func (t *authProviderT) refresh(image string) error {
 	sURL := fmt.Sprintf("https://auth.docker.io/token?service=registry.docker.io&scope=repository:%s:pull", image)
 
 	req, err := http.NewRequest("GET", sURL, nil)
@@ -36,9 +22,7 @@ func (t *TokenInfoT) refresh(image string) error {
 		return fmt.Errorf("cannot init request for JWT token: %w", err)
 	}
 
-	if Opts.DockerHubUsername != "" && Opts.DockerHubPassword != "" {
-		req.SetBasicAuth(Opts.DockerHubUsername, Opts.DockerHubPassword)
-	}
+	t.setAuth(req)
 
 	resp, err := hc.Do(req)
 	if err != nil {
@@ -63,30 +47,30 @@ func (t *TokenInfoT) refresh(image string) error {
 		t.m.Unlock()
 	}()
 
-	err = dec.Decode(&(t.TokenInfo))
+	err = dec.Decode(&(t.JWTTokenInfo))
 	if err != nil {
 		return fmt.Errorf("cannot decode JWT token struct: %w", err)
 	}
 
-	t.TokenInfo.ExpiresIn *= time.Second
+	t.JWTTokenInfo.ExpiresIn *= time.Second
 
-	t.TokenInfo.ExpiresAt = t.TokenInfo.IssuedAt.Add(t.TokenInfo.ExpiresIn)
+	t.JWTTokenInfo.ExpiresAt = t.JWTTokenInfo.IssuedAt.Add(t.JWTTokenInfo.ExpiresIn)
 
 	return nil
 }
 
-func (t *TokenInfoT) Get(image string) (string, error) {
+func (t *authProviderT) Get(image string) (string, error) {
 	var (
 		bNewTokenNeeded = false
 	)
 
 	t.m.RLock()
 
-	if t.TokenInfo.Token == "" {
+	if t.JWTTokenInfo.Token == "" {
 		log.Println("There is no obtained token")
 
 		bNewTokenNeeded = true
-	} else if time.Now().After(t.TokenInfo.ExpiresAt) {
+	} else if time.Now().After(t.JWTTokenInfo.ExpiresAt) {
 		log.Println("Present token expired, refresh needed")
 
 		bNewTokenNeeded = true
@@ -100,16 +84,28 @@ func (t *TokenInfoT) Get(image string) (string, error) {
 			return "", fmt.Errorf("cannot refresh token: %w", err)
 		}
 
-		log.Printf("New token retrieved, expiration in %d seconds", t.TokenInfo.ExpiresIn/time.Second)
+		log.Printf("New token retrieved, expiration in %d seconds", t.JWTTokenInfo.ExpiresIn/time.Second)
 
 		t.m.RLock()
 	}
 
-	token := t.TokenInfo.Token
+	token := t.JWTTokenInfo.Token
 
 	defer func() {
 		t.m.RUnlock()
 	}()
 
 	return token, nil
+}
+
+func NewAuthProvider(credentials AuthCredentials) (*authProviderT, error) {
+	if !credentials.isValidCredentials() && !credentials.isBlankCredentials() {
+		return nil, fmt.Errorf("invalid credentials provided")
+	}
+
+	provider := &authProviderT{
+		Credentials: credentials,
+	}
+
+	return provider, nil
 }

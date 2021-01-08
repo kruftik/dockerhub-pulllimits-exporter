@@ -9,6 +9,9 @@ import (
 	"github.com/jessevdk/go-flags"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"dockerhub-pulllimits-exporter/internal/dockerhub"
+	prom "dockerhub-pulllimits-exporter/internal/prometheus"
 )
 
 var (
@@ -19,28 +22,46 @@ var (
 		DockerHubPassword string `long:"dockerhub-password" env:"DOCKERHUB_PASSWORD" required:"false"`
 	}{}
 
-	hc = http.Client{}
+	checkImageLabel = "ratelimitpreview/test"
+	checkImageTag   = "latest"
 
-	retriever = NewDockerHubRetriever(checkImageLabel, checkImageTag, tokenInfo.Get)
+	retriever dockerhub.LimitsRetriever
 )
 
 func main() {
+	log.Printf("dockerhub-pulllimits-exporter starting")
+	defer func() {
+		log.Printf("dockerhub-pulllimits-exporter completed")
+	}()
+
 	_, err := flags.Parse(&Opts)
 	if err != nil {
 		fmt.Println("cannot parse flags: ", err)
 		os.Exit(1)
 	}
 
+	authCreds := dockerhub.AuthCredentials{}
+
 	if Opts.DockerHubUsername != "" && Opts.DockerHubPassword != "" {
 		log.Printf("Using provided '%s' credentials", Opts.DockerHubUsername)
+
+		authCreds.Login = Opts.DockerHubUsername
+		authCreds.PasswordToken = Opts.DockerHubPassword
 	} else {
 		log.Println("Using anonymous requests")
 	}
 
-	reg, err := RegisterCollectors()
+	retriever, err = dockerhub.NewLimitsRetriever(checkImageLabel, checkImageTag, authCreds)
+	if err != nil {
+		log.Panicf("cannot initialize limit retriever: %s", err.Error())
+	}
+
+	reg, err := prom.RegisterCollectors(&retriever)
 	if err != nil {
 		log.Panicf("cannot register collectors: %s", err.Error())
 	}
+
+	log.Printf("exporter started on :%d port", Opts.Port)
 
 	http.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", Opts.Port), nil); err != nil {

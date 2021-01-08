@@ -1,4 +1,4 @@
-package main
+package prometheus
 
 import (
 	"log"
@@ -6,9 +6,13 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+
+	"dockerhub-pulllimits-exporter/internal/dockerhub"
 )
 
 var (
+	retriever *dockerhub.LimitsRetriever
+
 	dockerHubMetricsLabels = []string{"interval_sec"}
 
 	dockerHubMaxLimitMetricDesc = prometheus.NewDesc(
@@ -25,9 +29,7 @@ var (
 	)
 )
 
-type DockerHubLimitsCollector struct {
-	retriever *DockerHubRetriever
-}
+type DockerHubLimitsCollector struct{}
 
 func (dhlc DockerHubLimitsCollector) Describe(ch chan<- *prometheus.Desc) {
 	prometheus.DescribeByCollect(dhlc, ch)
@@ -61,7 +63,9 @@ func NewDockerHubLimitsCollector() DockerHubLimitsCollector {
 	return dhlc
 }
 
-func RegisterCollectors() (*prometheus.Registry, error) {
+func RegisterCollectors(retr *dockerhub.LimitsRetriever) (*prometheus.Registry, error) {
+	retriever = retr
+
 	reg := prometheus.NewPedanticRegistry()
 
 	reg.MustRegister(
