@@ -8,8 +8,6 @@ RUN apk add --no-cache \
         ca-certificates \
         upx
 
-RUN pwd ; ls -la .
-
 RUN CGO_ENABLED=0 \
     GOOS=linux \
     GOARCH=amd64 \
@@ -24,12 +22,9 @@ FROM scratch
 
 WORKDIR /
 
-#RUN adduser -S -D -H -h /srv appuser
-#USER appuser
-
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /app /app
 
-EXPOSE 8080
+EXPOSE 8881
 
 CMD ["/app"]

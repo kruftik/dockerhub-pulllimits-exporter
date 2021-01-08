@@ -1,0 +1,14 @@
+version: '2.4'
+
+services:
+  dockerhub-pulllimits-exporter:
+#    image: kruft/dockerhub-pulllimits-exporter:latest
+      build:
+        context: ./
+        dockerfile: ./Dockerfile
+      environment:
+        DOCKERHUB_EXPORTER_PORT: "8881"
+#        DOCKERHUB_USERNAME: your_user_name
+#        DOCKERHUB_PASSWORD: your_password
+      ports:
+        - "8881:8881"
